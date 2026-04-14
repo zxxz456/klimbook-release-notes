@@ -1,0 +1,142 @@
+# =====================================================================
+# Klimbook Release Notes — Configuracion
+# =====================================================================
+#
+# Este archivo controla el comportamiento del pipeline sin necesidad
+# de modificar codigo. Cambiar un modelo, agregar una plataforma,
+# o ajustar un prompt template se hace aqui.
+#
+
+# ---- Proyecto ----
+project:
+  name: "Klimbook"
+  repo_path: "."
+  default_branch: "main"
+
+# ---- Modelos de Claude ----
+# Haiku para tareas simples (clasificacion): rapido y barato
+# Sonnet para tareas de calidad (generacion, formato): mejor output
+models:
+  classifier: "claude-haiku-4-5-20251001"
+  generator: "claude-sonnet-4-20250514"
+  formatter: "claude-sonnet-4-20250514"
+
+# ---- Temperaturas por paso ----
+# 0.0 = determinista (clasificacion)
+# 0.3 = poca variacion (generacion formal)
+# 0.7 = mas creativo (posts casuales)
+temperatures:
+  classifier: 0.0
+  generator: 0.3
+  formatter_formal: 0.3
+  formatter_casual: 0.7
+
+# ---- Retry ----
+# Si un paso falla (JSON invalido, validacion Pydantic, etc.),
+# se reintenta bajando la temperature en cada intento.
+retry:
+  max_retries: 3
+  temperatures: [0.3, 0.1, 0.0]
+
+# ---- Concurrencia ----
+# Maximo de requests simultaneos a la API de Claude.
+# Respetar rate limits de tu tier de API.
+concurrency:
+  max_parallel: 3
+
+# ---- Cache de respuestas ----
+# Almacena respuestas de Claude en disco, indexadas por (model, system,
+# prompt, temperature, max_tokens, prefill). Itera prompts sin gastar tokens.
+# Limpiar con: rm -rf .cache/  o  klimbook-release generate --no-cache
+cache:
+  enabled: false
+  dir: ".cache"
+
+# ---- Detailed changelog ----
+# Lee el README del proyecto destino, parsea las entradas
+# "#### Backend|Frontend|Mobile `vX.Y.Z` — Title (date)" y las inyecta
+# como contexto al generator. Sin LLM — regex puro. Si el README no
+# existe o no tiene la seccion, el pipeline continua sin contexto.
+changelog:
+  enabled: true
+  source: "README.md"
+  sections: ["Backend", "Frontend", "Mobile"]
+  count: 1
+
+# ---- Plataformas ----
+# Cada plataforma tiene sus propias reglas de formato.
+# enabled: si se genera o no
+# language: idioma del output
+# max_chars: limite de caracteres (null = sin limite)
+platforms:
+  github:
+    enabled: true
+    language: "en"
+    max_chars: null
+    description: "GitHub release markdown completo con secciones y emojis"
+
+  playstore_en:
+    enabled: true
+    language: "en"
+    max_chars: 500
+    description: "Google Play What's New — bullet points cortos, user-facing"
+
+  playstore_es:
+    enabled: true
+    language: "es"
+    max_chars: 500
+    description: "Google Play What's New en espanol — traduccion con glosario"
+
+  appstore:
+    enabled: true
+    language: "en"
+    max_chars: 4000
+    description: "App Store What's New — formato limpio de Apple"
+
+  kofi:
+    enabled: true
+    language: "en"
+    max_chars: 2000
+    description: "Ko-fi post — tono casual, personal, agradecido"
+
+# ---- Glosario ----
+# Terminos de escalada que NO deben traducirse al espanol.
+# El traductor mantiene estas palabras en ingles.
+glossary:
+  - boulder
+  - bouldering
+  - route
+  - crag
+  - pitch
+  - belay
+  - rappel
+  - crimp
+  - sloper
+  - dyno
+  - flash
+  - onsight
+  - redpoint
+  - send
+  - beta
+  - crux
+  - anchor
+  - quickdraw
+  - carabiner
+  - top-rope
+  - lead climbing
+  - sport climbing
+  - trad climbing
+  - ascent
+  - grade
+  - wall
+  - block
+
+# ---- Pricing (USD por millon de tokens) ----
+# Para calcular costos estimados antes de ejecutar.
+pricing:
+  claude-haiku-4-5-20251001:
+    input: 0.80
+    output: 4.00
+  claude-sonnet-4-20250514:
+    input: 3.00
+    output: 15.00
