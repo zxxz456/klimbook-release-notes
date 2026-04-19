@@ -3,7 +3,11 @@
 CLI tool que automatiza la generación de **release notes multi-plataforma** para [Klimbook](https://github.com/zxxz456/klimbook). 
 Lee los commits de Git entre dos tags (al igual que los versioning notes en el repo), los clasifica con Claude Haiku, redacta notas en markdown con Claude Sonnet y adapta el resultado en paralelo a GitHub, Play Store (en/es), App Store y Ko-fi.
 
-> **Estado actual (v0.1.0):** pipeline end-to-end funcional. Todos los componentes (`git_reader`, `classifier`, `generator`, `formatter`, `validator`) están implementados y conectados desde el CLI. Ejecutar `klimbook-release generate --from vX --to vY` produce los 5 artefactos en disco más un `bundle.json` con la metadata completa.
+Ofrece **dos CLIs**:
+- **`klimbook-release`** — pipeline contra la API de Anthropic (Claude Haiku + Sonnet). Producción.
+- **`kbkro`** (*klimbook release ollama*) — mismo pipeline 100% local, contra un servidor Ollama (`gemma4:26b`, `llama3.3:70b`, `qwen2.5:14b`, etc.). Sin API key, sin costo. Ver [kbkro — Variante con Ollama](#kbkro--variante-con-ollama-local-gratis).
+
+> **Estado actual (v0.1.0):** pipeline end-to-end funcional. Todos los componentes (`git_reader`, `classifier`, `generator`, `formatter`, `validator`) están implementados y conectados desde el CLI. Ejecutar `klimbook-release generate --from vX --to vY` produce los 5 artefactos en disco más un `bundle.json` con la metadata completa. La variante `kbkro` reutiliza los mismos componentes via shims Anthropic→Ollama — cero duplicación.
 
 ---
 
@@ -122,21 +126,26 @@ klimbook_release_notes_agent/
 ├── pyproject.toml        # Build config + dependencies + entry point CLI
 ├── config.yaml           # Configuración del pipeline (modelos, plataformas, glosario)
 ├── README.md             # Este archivo
-├── src/                  # Código fuente del paquete `klimbook_release`
-│   ├── __init__.py       # Versión del paquete (0.1.0)
-│   ├── cli.py            # Entry point Typer: generate, tags, config (~310 líneas)
-│   ├── config.py         # Loader YAML → Config (Pydantic) + cálculo de costos (~210 líneas)
-│   ├── git_reader.py     # Lee commits entre tags con GitPython (~197 líneas)
-│   ├── models.py         # Modelos Pydantic compartidos (~233 líneas)
-│   ├── prompts.py        # Todos los prompts del pipeline (~248 líneas)
-│   ├── utils.py          # API client singleton, call_llm, retry, métricas (~248 líneas)
-│   ├── classifier.py     # Clasifica commits con Haiku + retry + agrupador (~196 líneas)
-│   ├── generator.py      # Genera markdown con Sonnet + validación de estructura (~183 líneas)
-│   ├── formatter.py      # Formatea por plataforma en paralelo + smart truncate (~409 líneas)
-│   ├── validator.py      # Valida bundle (sin LLM) → ValidationResult (~334 líneas)
-│   ├── cache.py          # ResponseCache SHA-256 en disco (~175 líneas)
-│   ├── changelog.py      # Parser regex del README del proyecto destino (~205 líneas)
-│   └── estimate.py       # Estimador de tokens y costo sin API (~215 líneas)
+├── src/                       # Código fuente
+│   ├── klimbook_release/      # Paquete principal (pipeline contra Anthropic)
+│   │   ├── __init__.py        # Versión del paquete (0.1.0)
+│   │   ├── cli.py             # Entry point Typer: generate, tags, config (~310 líneas)
+│   │   ├── config.py          # Loader YAML → Config (Pydantic) + cálculo de costos (~210 líneas)
+│   │   ├── git_reader.py      # Lee commits entre tags con GitPython (~197 líneas)
+│   │   ├── models.py          # Modelos Pydantic compartidos (~233 líneas)
+│   │   ├── prompts.py         # Todos los prompts del pipeline (~248 líneas)
+│   │   ├── utils.py           # API client singleton, call_llm, retry, métricas (~248 líneas)
+│   │   ├── classifier.py      # Clasifica commits con Haiku + retry + agrupador (~196 líneas)
+│   │   ├── generator.py       # Genera markdown con Sonnet + validación de estructura (~183 líneas)
+│   │   ├── formatter.py       # Formatea por plataforma en paralelo + smart truncate (~409 líneas)
+│   │   ├── validator.py       # Valida bundle (sin LLM) → ValidationResult (~334 líneas)
+│   │   ├── cache.py           # ResponseCache SHA-256 en disco (~175 líneas)
+│   │   ├── changelog.py       # Parser regex del README del proyecto destino (~205 líneas)
+│   │   └── estimate.py        # Estimador de tokens y costo sin API (~215 líneas)
+│   └── kbkro/                 # Paquete Ollama (reutiliza klimbook_release via shims)
+│       ├── __init__.py        # Versión del paquete (0.1.0)
+│       ├── cli.py             # Entry point Typer: generate, tags, config con --model/--host (~280 líneas)
+│       └── ollama_shim.py     # Sync/Async shims duck-typed como anthropic.{Anthropic,AsyncAnthropic} (~240 líneas)
 └── tests/
     ├── __init__.py
     ├── conftest.py              # Fixtures: MockAnthropic (sync + async), sample_commits, base_config
@@ -149,7 +158,7 @@ klimbook_release_notes_agent/
     └── test_estimate.py         # Estimador: heurística, shape, no-api-calls
 ```
 
-> **Nota:** El paquete instalado se llama `klimbook_release` (declarado en `pyproject.toml` con `setuptools.packages.find` apuntando a `src/`). El comando CLI se llama `klimbook-release` (con guion).
+> **Nota:** Dos paquetes se instalan desde `src/`: `klimbook_release` (CLI `klimbook-release`, contra Anthropic) y `kbkro` (CLI `kbkro`, contra Ollama local). Ambos entry points se declaran en `pyproject.toml`.
 
 ---
 
@@ -800,6 +809,200 @@ klimbook-release changelog --source /otro/README.md --raw
 
 ---
 
+## kbkro — Variante con Ollama (local, gratis)
+
+`kbkro` (*klimbook release ollama*) es un segundo CLI que corre el **mismo pipeline** pero contra un servidor Ollama local en vez de la API de Anthropic. Sin API key, sin costo monetario, sin enviar el código a terceros.
+
+**Requisitos:**
+- [Ollama](https://ollama.com/) corriendo localmente (`ollama serve`)
+- Al menos un modelo instalado: `ollama pull gemma4:26b` (o el que prefieras: `llama3.3:70b`, `qwen2.5:14b`, `gemma4:31b`, etc.)
+
+### Cómo funciona (arquitectura del shim)
+
+`kbkro` **no duplica** el pipeline. El trabajo pesado lo hace `klimbook_release` tal cual — solo se sustituyen los clientes de Anthropic con *shims* que tienen la misma interfaz pero hablan HTTP con Ollama. Así, `classifier`, `generator`, `formatter`, cache, retry, métricas y validación se reutilizan sin modificar.
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│  kbkro generate --from v2.8.0 --to v2.9.0 --model gemma4:26b    │
+└────────────────────────────┬────────────────────────────────────┘
+                             │
+                             ▼
+       ┌─────────────────────────────────────────────┐
+       │  kbkro/cli.py — _install_ollama()           │
+       │  1. Crea OllamaSyncShim + OllamaAsyncShim   │
+       │  2. Monkey-patch:                           │
+       │       utils._sync_client  = sync_shim       │
+       │       utils._async_client = async_shim     │
+       │       formatter._async_client = async_shim  │
+       │  3. Fuerza los 3 models = --model           │
+       │  4. pricing[model] = (0, 0)   ← $0 USD      │
+       └──────────────────┬──────────────────────────┘
+                          │ el pipeline de klimbook_release
+                          │ sigue sin saber que habla con Ollama
+                          ▼
+       ┌─────────────────────────────────────────────┐
+       │  [1-2/5] git_reader + changelog (sin LLM)   │
+       └──────────────────┬──────────────────────────┘
+                          ▼
+       ┌─────────────────────────────────────────────┐
+       │  [3/5] classifier.classify_commits()        │
+       │  call_llm(..., prefill="[", max_tokens=16k) │
+       │  → cache lookup                             │
+       │  → sync_shim.messages.create(...)           │
+       │    (duck-typed como Anthropic)              │
+       └──────────────────┬──────────────────────────┘
+                          ▼
+       ┌─────────────────────────────────────────────┐
+       │  OllamaSyncShim._SyncMessages.create()      │
+       │  1. _build_payload:                         │
+       │     {model, messages, stream:false,         │
+       │      think:false,  ← desactiva reasoning    │
+       │      options:{temperature, num_predict}}    │
+       │  2. POST http://localhost:11434/api/chat    │
+       │  3. _parse(response, prefill):              │
+       │     - strip del prefill si Ollama lo repite │
+       │     - log de thinking separado (si hubo)    │
+       │     - warn si done_reason != "stop"         │
+       │  4. Devuelve _Response duck-typed           │
+       │     (.content[0].text + .usage.*)           │
+       └──────────────────┬──────────────────────────┘
+                          ▼
+       ┌─────────────────────────────────────────────┐
+       │  call_llm (post-provider):                  │
+       │    text = prefill + response.content[0].text│
+       │    cache.set(...)                           │
+       │    metrics.add(StepMetrics($0.00))          │
+       └──────────────────┬──────────────────────────┘
+                          ▼
+       ┌─────────────────────────────────────────────┐
+       │  [4/5] generator → mismo camino via shim    │
+       │  [5/5] formatter × N en paralelo (async     │
+       │        shim con httpx.AsyncClient)          │
+       │  Retry + smart_truncate tal cual            │
+       └──────────────────┬──────────────────────────┘
+                          ▼
+       ┌─────────────────────────────────────────────┐
+       │  releases/v2.9.0/{github.md,.txt, ...}     │
+       │  Cost: $0.000000                            │
+       └─────────────────────────────────────────────┘
+```
+
+### Reglas de compatibilidad del shim
+
+Para que Ollama se vea exactamente como Claude por fuera, el shim compensa varias diferencias:
+
+| Claude (Anthropic) | Ollama | Shim compensa |
+|---|---|---|
+| Prefill: cuando el último `message` es `role="assistant"`, Claude **continúa** desde ese texto sin repetirlo | Algunos modelos (gemma4, qwen3) **repiten** el prefill al inicio de `message.content` | `_parse()` detecta el prefill y lo strip-ea si aparece duplicado |
+| `response.usage.input_tokens` / `output_tokens` | `prompt_eval_count` / `eval_count` | Wrapper los renombra |
+| `response.content[0].text` | `message.content` | `_Response` + `_ContentBlock` dataclasses |
+| Modelo responde directo al prompt | Modelos reasoning (gemma4, qwen3) gastan num_predict en `message.thinking` | Pasa `"think": false` en el payload + log separado si aparece thinking |
+| `response.stop_reason == "end_turn"` | `done_reason: "stop"` normalmente; `"length"` si se truncó | Warn explícito si `done_reason != "stop"` para alertar de truncación |
+
+### Instalación
+
+```bash
+# Clonar e instalar en modo desarrollo (instala ambos CLIs)
+git clone https://github.com/zxxz456/klimbook-release.git
+cd klimbook-release
+pip install -e .
+
+# Verificar que los dos comandos están disponibles
+klimbook-release --help
+kbkro --help
+
+# Arrancar Ollama y bajar un modelo
+ollama serve &
+ollama pull gemma4:26b
+```
+
+### Uso
+
+```bash
+# Modelo por defecto: gemma4:26b, host localhost:11434
+kbkro generate --from v2.8.0 --to v2.9.0
+
+# Especificar modelo
+kbkro generate --from v2.8.0 --to v2.9.0 --model gemma4:31b
+kbkro generate --from v2.8.0 --to v2.9.0 --model llama3.3:70b
+kbkro generate --from v2.8.0 --to v2.9.0 --model qwen2.5:14b-instruct
+
+# Host remoto de Ollama (otra máquina de la red)
+kbkro generate --from v2.8.0 --to v2.9.0 --host http://192.168.1.50:11434
+
+# Solo algunas plataformas (útil para iterar rápido con modelos locales lentos)
+kbkro generate --from v2.8.0 --to v2.9.0 --platforms github
+
+# Dry run (lista commits sin llamar a Ollama)
+kbkro generate --from v2.8.0 --to v2.9.0 --dry-run
+
+# Verbose: vuelca respuestas completas de Ollama + separación content/thinking
+kbkro generate --from v2.8.0 --to v2.9.0 --verbose
+
+# Output custom
+kbkro generate --from v2.8.0 --to v2.9.0 -o ~/Documents/notes
+
+# Cache (igual que klimbook-release)
+kbkro generate --from v2.8.0 --to v2.9.0 --use-cache
+
+# Inspeccionar config tal como quedaría
+kbkro config --model gemma4:26b
+
+# Listar tags del repo
+kbkro tags
+```
+
+### Output esperado
+
+Idéntico a `klimbook-release` en estructura, pero con `Cost: $0.000000` y modelo local en cada paso:
+
+```
+============================================================
+  Klimbook Release Notes (Ollama)
+  Model:       gemma4:26b
+  Host:        http://localhost:11434
+  v2.8.0 -> v2.9.0
+  Plataformas: github, playstore_en, playstore_es, appstore, kofi
+============================================================
+
+[1/5] Leyendo commits...
+  14 commits encontrados
+
+[2/5] Leyendo detailed changelog del README...
+  • Backend v2.11.0 — Notification Deep-Linking + New Reward Notifications
+  • Frontend v2.11.0 — Notification Deep-Linking
+  • Mobile v2.11.0 — Notification Deep-Linking
+
+[3/5] Clasificando commits con gemma4:26b...
+  14 commits clasificados
+    docs: 6 | feature: 3 | fix: 2 | refactor: 1 | test: 1 | ...
+
+[4/5] Generando notas y formateando plataformas...
+  Markdown generado: 2134 chars
+  github:       3102 chars [OK]
+  playstore_en: 481/500 chars [OK]
+  playstore_es: 495/500 chars [OK]
+  appstore:     2201/4000 chars [OK]
+  kofi:         1402/2000 chars [OK]
+
+[5/5] Validando y guardando...
+============================================================
+  Validation: PASSED
+============================================================
+  Cost:          $0.000000
+  Time:          312.48s
+```
+
+### Notas prácticas
+
+- **`num_predict` alto ≠ costo**: a diferencia de Claude, en Ollama pagas en tiempo de cómputo, no por token. Los caps de `classifier` y `generator` están en **16000** para dar margen a modelos verbosos sin riesgo de JSON truncado.
+- **Concurrencia**: formatear 5 plataformas en paralelo con `gemma4:26b` hace sufrir a tu GPU. Si se cuelga, bájale: en `config.yaml` → `concurrency.max_parallel: 1`.
+- **Elegir modelo**: modelos reasoning tipo `gemma4`/`qwen3` son más verbosos. Para un pipeline más rápido prueba `llama3.2:3b` o `qwen2.5:14b` (siguen JSON mejor). Para calidad de redacción, `gemma4:31b` o `llama3.3:70b`.
+- **Streaming no**: el shim usa `stream: false` porque el pipeline necesita el texto completo antes de validar JSON/markdown/longitud.
+- **Costo reportado**: el pipeline sigue sumando tokens en `PipelineMetrics`, pero `pricing[model] = (0, 0)` hace que el costo final siempre dé `$0.000000`.
+
+---
+
 ## Testing
 
 ```bash
@@ -901,7 +1104,9 @@ Cada paso del pipeline maneja retries de forma diferente según qué puede salir
 
 | Variable | Requerido | Descripción |
 |---|---|---|
-| `ANTHROPIC_API_KEY` | Sí (excepto `--dry-run`, `tags`, `config`) | API key de Anthropic. Lo lee `Anthropic()` y `AsyncAnthropic()` automáticamente. |
+| `ANTHROPIC_API_KEY` | Sí para `klimbook-release` (excepto `--dry-run`, `--estimate`, `tags`, `config`, `changelog`). **No** para `kbkro`. | API key de Anthropic. La lee `Anthropic()` / `AsyncAnthropic()` automáticamente. |
+
+`kbkro` en cambio no necesita ninguna variable — solo un servidor Ollama accesible (default `http://localhost:11434`, override con `--host`).
 
 ---
 
