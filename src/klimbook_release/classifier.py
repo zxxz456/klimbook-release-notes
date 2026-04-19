@@ -43,6 +43,7 @@ Metadata:
 Historial:
 ------------
 Autor       Fecha           Descripcion
+zxxz6       18/04/2026      Inc max_tokens a 16K para modelos de ollama
 zxxz6       03/04/2026      Creacion
 """
 
@@ -119,12 +120,14 @@ def classify_commits(
             # Llamar a Claude con prefill "[" para forzar JSON array.
             # call_llm concatena el prefill con la respuesta automaticamente,
             # asi que raw_text ya empieza con "[".
+            # Los models de ollama son mas verbosos que los de claudio, 
+            # asi que damos mas tokens para el response.
             raw_text, step_metrics = call_llm(
                 model=config.classifier_model,
                 system=CLASSIFIER_SYSTEM,
                 prompt=current_prompt,
                 temperature=temp,
-                max_tokens=3000,
+                max_tokens=16000,
                 prefill="[",
                 config=config,
                 step_name=step_name,

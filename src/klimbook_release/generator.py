@@ -45,6 +45,7 @@ Metadata:
 Historial:
 ------------
 Autor       Fecha           Descripcion
+zxxz6       18/04/2026      Inc max_tokens a 16K para modelos de ollama
 zxxz6       13/04/2026      Agregado parametro prior_context para inyectar
                             el detailed changelog del README al prompt
                             via el placeholder {prior_context}
@@ -164,7 +165,7 @@ def generate_notes(
                 system=system,
                 prompt=current_prompt,
                 temperature=temp,
-                max_tokens=4000,
+                max_tokens=16000,
                 config=config,
                 step_name=step_name,
                 metrics=metrics,
